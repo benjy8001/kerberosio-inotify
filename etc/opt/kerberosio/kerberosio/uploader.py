@@ -66,21 +66,28 @@ class MotionUploader:
 
     def _create_gdata_client(self):
         """Create a pydrive oonnection."""
-	
-	self.gauth = GoogleAuth()
-	self.gauth.LoadCredentialsFile("/etc/opt/kerberosio/pydrive_auth.txt")
-	if self.gauth.credentials is None:  
-    	    self.gauth.CommandLineAuth()  # Authenticate if they're not there
-	elif self.gauth.access_token_expired:  
+        self.gauth = GoogleAuth()
+        self.gauth.LoadCredentialsFile("/etc/opt/kerberosio/pydrive_auth.txt")
+        if self.gauth.credentials is None:
+            self.gauth.CommandLineAuth()  # Authenticate if they're not there
+        elif self.gauth.access_token_expired:
             self.gauth.Refresh()          # Refresh them if expired
-        else:                               
+        else:
             self.gauth.Authorize()        # Initialize the saved creds
         self.gauth.SaveCredentialsFile("/etc/opt/kerberosio/pydrive_auth.txt")  # Save the current credentials to a file
         self.drive = GoogleDrive(self.gauth)# Initialize the saved creds
 
     def _get_folder_resource(self):
         """Find and return the resource whose title matches the given folder."""
-        return self.drive.ListFile({'q': "title='{}' and mimeType contains 'application/vnd.google-apps.folder' and trashed=false".format(self.folder)}).GetList()[0]
+        current_date = datetime.strftime(datetime.now(), '%Y-%m-%d')
+        root_folder = self.drive.ListFile({'q': "title='{}' and mimeType contains 'application/vnd.google-apps.folder' and trashed=false".format(self.folder)}).GetList()[0]
+        current_date_folder = self.drive.ListFile({'q': "title='{}' and '{}' in parents and trashed=false".format(current_date, root_folder['id'])}).GetList()
+        if current_date_folder:
+            return current_date_folder[0]
+
+        current_date_folder = self.drive.CreateFile({'title': current_date, "mimeType": "application/vnd.google-apps.folder", 'parents':[{'id': root_folder['id']}]})
+        current_date_folder.Upload()
+        return current_date_folder
     
     def _send_email(self,msg):
         '''Send an email using the GMail account.'''
@@ -94,10 +101,10 @@ class MotionUploader:
 
     def media_upload(self, file_path, folder_resource):
         '''Upload the file and return the doc'''
-	print('Uploading image')
+        print('Uploading image')
         doc = self.drive.CreateFile({'title':os.path.basename(file_path), 'parents':[{u'id': folder_resource['id']}]})
-	doc.SetContentFile(file_path)
-	doc.Upload()
+        doc.SetContentFile(file_path)
+        doc.Upload()
         return doc
     
     def upload_file(self, file_path):
@@ -113,7 +120,7 @@ class MotionUploader:
                 self.recipient = self.recipient + self.snapshotrecipient
 
             thumbnail_link = doc['thumbnailLink'] # unused at the moment
-	    media_link = doc['alternateLink']
+            media_link = doc['alternateLink']
 
             # Send an email with thumbnail and link
             msg = self.message
